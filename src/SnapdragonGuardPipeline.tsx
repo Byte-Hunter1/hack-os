@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Shield, ShieldAlert, Thermometer, Lock, 
   RefreshCw, Camera, CheckCircle2, Play, Pause, FileText,
-  Activity, Binary, AlertTriangle, Eye, EyeOff
+  Activity, Binary, AlertTriangle, Eye, EyeOff, Database
 } from 'lucide-react';
 
 // ==========================================
@@ -41,6 +41,7 @@ export interface SecurityManifest {
     reason: string;
     inspector: string;
   };
+  imageData?: string;
 }
 
 export interface QuantizationProfile {
@@ -118,6 +119,8 @@ export const SnapdragonGuardDashboard: React.FC = () => {
   const [isNpuActive, setIsNpuActive] = useState<boolean>(true);
   const [thermalStatus, setThermalStatus] = useState<'NORMAL' | 'WARM' | 'THROTTLED'>('NORMAL');
   const [manifest, setManifest] = useState<SecurityManifest | null>(null);
+  const [signingHistory, setSigningHistory] = useState<SecurityManifest[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
   const [isCapturing, setIsCapturing] = useState<boolean>(true);
   const [isCameraHookEnabled, setIsCameraHookEnabled] = useState<boolean>(false);
   const [revealWatermark, setRevealWatermark] = useState<boolean>(false);
@@ -142,6 +145,28 @@ export const SnapdragonGuardDashboard: React.FC = () => {
   const [compilingDlc, setCompilingDlc] = useState<boolean>(false);
   const [compilerLogs, setCompilerLogs] = useState<string[]>([]);
   
+  // Fetch signing history from Neon Postgres backend
+  const fetchSigningHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch('/api/manifests');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.manifests) {
+          setSigningHistory(data.manifests);
+        }
+      }
+    } catch (error) {
+      console.warn('[API] Failed to fetch signing history from Neon Postgres.', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSigningHistory();
+  }, []);
+
   // Ref hooks
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -545,6 +570,7 @@ export const SnapdragonGuardDashboard: React.FC = () => {
       const result = await response.json();
       if (result.success && result.manifest) {
         setManifest(result.manifest);
+        fetchSigningHistory();
       } else {
         console.error('Signing failed:', result);
       }
@@ -1114,6 +1140,22 @@ export const SnapdragonGuardDashboard: React.FC = () => {
                   
                   {manifest ? (
                     <div style={dashboardStyles.manifestContent}>
+                      {manifest.imageData && (
+                        <div style={{ marginBottom: '14px' }}>
+                          <div style={{ fontSize: '10px', color: '#8892B0', marginBottom: '6px', fontWeight: 'bold' }}>Archived Frame (Neon Postgres Blob):</div>
+                          <img 
+                            src={manifest.imageData} 
+                            alt="Signed frame representation" 
+                            style={{ 
+                              width: '100%', 
+                              height: '110px', 
+                              objectFit: 'cover', 
+                              borderRadius: '6px', 
+                              border: '1px solid rgba(0, 240, 255, 0.2)' 
+                            }} 
+                          />
+                        </div>
+                      )}
                       <div style={dashboardStyles.manifestLine}>
                         <span style={dashboardStyles.manifestKey}>Verified Source:</span>
                         <span style={dashboardStyles.manifestVal}>{manifest.deviceLineage.sensor}</span>
@@ -1191,6 +1233,68 @@ export const SnapdragonGuardDashboard: React.FC = () => {
                     <div style={dashboardStyles.manifestPlaceholder}>
                       <AlertTriangle size={24} color="#64748B" style={{ marginBottom: '8px' }} />
                       <span>Lineage manifest empty. Inject watermark above to securely sign hardware-isolated camera assets and embed licensing rights.</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Persistent Audit Ledger (Neon PostgreSQL) */}
+                <div style={{
+                  ...dashboardStyles.secureEnclaveBox,
+                  marginTop: '16px'
+                }}>
+                  <div style={dashboardStyles.enclaveHeader}>
+                    <Database size={16} color="#00F0FF" />
+                    <span style={dashboardStyles.enclaveTitle}>Persistent Audit Ledger (Neon Postgres)</span>
+                  </div>
+                  
+                  {isLoadingHistory ? (
+                    <div style={dashboardStyles.manifestPlaceholder}>
+                      <span style={{ fontSize: '11px', color: '#94A3B8' }}>Connecting to Neon database...</span>
+                    </div>
+                  ) : signingHistory.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                      {signingHistory.map((item, idx) => (
+                        <div 
+                          key={idx}
+                          onClick={() => setManifest(item)}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px',
+                            borderRadius: '6px',
+                            backgroundColor: manifest?.manifestHash === item.manifestHash ? 'rgba(0, 240, 255, 0.08)' : 'rgba(15, 23, 42, 0.3)',
+                            border: manifest?.manifestHash === item.manifestHash ? '1px solid rgba(0, 240, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.05)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontSize: '11px', color: '#F8FAFC', fontFamily: 'monospace' }}>
+                              {item.manifestHash.substring(0, 18)}...
+                            </span>
+                            <span style={{ fontSize: '9px', color: '#64748B' }}>
+                              {new Date(item.signingTime).toLocaleString()}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              fontSize: '9px',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontWeight: 'bold',
+                              backgroundColor: item.geminiAnalysis?.status === 'GENUINE' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 51, 102, 0.15)',
+                              color: item.geminiAnalysis?.status === 'GENUINE' ? '#10B981' : '#FF3366'
+                            }}>
+                              {item.geminiAnalysis?.status || 'GENUINE'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={dashboardStyles.manifestPlaceholder}>
+                      <span style={{ fontSize: '11px', color: '#64748B' }}>No signed manifests found in database.</span>
                     </div>
                   )}
                 </div>

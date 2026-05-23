@@ -1,14 +1,55 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import pkg from 'pg';
+import dotenv from 'dotenv';
 
+// Load environment variables
+dotenv.config();
+
+const { Pool } = pkg;
 const app = express();
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // support large base64 image payloads
 
-const GEMINI_API_KEY = 'AIzaSyCgxDi7lFYl7iWZBkBS5eKuGCCq52xjWLs';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyCgxDi7lFYl7iWZBkBS5eKuGCCq52xjWLs';
+const DATABASE_URL = process.env.DATABASE_URL;
+
+// Initialize Neon Postgres connection pool
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // required for secure remote SSL connection
+  },
+});
+
+// Setup schema table if it does not exist
+const initDb = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS signed_manifests (
+        id SERIAL PRIMARY KEY,
+        manifest_hash TEXT UNIQUE NOT NULL,
+        image_data TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        public_key TEXT NOT NULL,
+        signing_time TIMESTAMP WITH TIME ZONE NOT NULL,
+        c2pa_verified BOOLEAN NOT NULL,
+        license_tier TEXT NOT NULL,
+        commercial_value_score NUMERIC NOT NULL,
+        royalty_rights TEXT NOT NULL,
+        device_lineage JSONB NOT NULL,
+        gemini_analysis JSONB
+      );
+    `);
+    console.log('[Database] Neon PostgreSQL initialized. signed_manifests table verified.');
+  } catch (err) {
+    console.error('[Database] Schema initialization failed:', err.message);
+  }
+};
+initDb();
 
 // Generate ECDSA P-256 Keypair simulating the Snapdragon Secure Processing Unit (SPU) TrustZone
 const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', {
@@ -25,6 +66,38 @@ console.log('Snapdragon SPU Cryptographic Keystore Initialized.');
 console.log('Secure ECDSA P-256 Keypair Generated.');
 console.log('Gemini AI Multimodal Verification Layer Active.');
 console.log('----------------------------------------------------');
+
+// Expose historical signed manifests retrieval endpoint
+app.get('/api/manifests', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT manifest_hash, image_data, signature, public_key, signing_time, c2pa_verified, license_tier, commercial_value_score, royalty_rights, device_lineage, gemini_analysis FROM signed_manifests ORDER BY signing_time DESC LIMIT 20'
+    );
+    
+    // Map database rows back to standard C2PA manifests
+    const manifests = result.rows.map(row => ({
+      isWatermarked: true,
+      c2paVerified: row.c2pa_verified,
+      signatureAlgorithm: 'ECDSA_P256_SHA256 (StrongBox locked)',
+      hardwareKeyId: 'QUALCOMM_TEE_ENV_0x8C8CDD3',
+      signingTime: new Date(row.signing_time).toISOString(),
+      manifestHash: row.manifest_hash,
+      signature: row.signature,
+      publicKey: row.public_key,
+      deviceLineage: typeof row.device_lineage === 'string' ? JSON.parse(row.device_lineage) : row.device_lineage,
+      licenseTier: row.license_tier,
+      commercialValueScore: parseFloat(row.commercial_value_score),
+      royaltyRights: row.royalty_rights,
+      geminiAnalysis: typeof row.gemini_analysis === 'string' ? JSON.parse(row.gemini_analysis) : row.gemini_analysis,
+      imageData: row.image_data // include image base64
+    }));
+
+    res.json({ success: true, manifests });
+  } catch (error) {
+    console.error('Failed to load manifests:', error);
+    res.status(500).json({ error: 'Database fetch error', details: error.message });
+  }
+});
 
 // C2PA asset signing endpoint
 app.post('/api/sign', async (req, res) => {
@@ -94,12 +167,12 @@ app.post('/api/sign', async (req, res) => {
           status: parsed.status || 'GENUINE',
           confidence: parsed.confidenceScore || 0.95,
           reason: parsed.reason || 'Verified physical source authenticity.',
-          inspector: 'Gemini 1.5 Flash Vision API'
+          inspector: 'Gemini 2.5 Flash Vision API'
         };
         console.log(`[Gemini AI] Analysis: ${geminiReport.status} (Conf: ${Math.round(geminiReport.confidence * 100)}%) - ${geminiReport.reason}`);
       }
     } catch (geminiError) {
-      console.warn('[SPU] Gemini API verification failed or timed out. Falling back to local simulation.', geminiError.message);
+      console.warn('[SPU] Gemini API verification failed. Falling back to local simulation.', geminiError.message);
       // Fallback response if API key is rate-limited or fails
       geminiReport = {
         status: metadata?.selectedProfile === 'cpu-fallback' ? 'DEEPFAKE' : 'GENUINE',
@@ -131,6 +204,34 @@ app.post('/api/sign', async (req, res) => {
     };
 
     console.log(`[SPU] Signed frame! Hash: sha256:${hashHex.substring(0, 16)}... Signature: ${signatureBase64.substring(0, 16)}...`);
+
+    // 5. Store manifest securely in Neon Postgres database
+    try {
+      await pool.query(
+        `INSERT INTO signed_manifests (
+          manifest_hash, image_data, signature, public_key, signing_time, 
+          c2pa_verified, license_tier, commercial_value_score, royalty_rights, 
+          device_lineage, gemini_analysis
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (manifest_hash) DO NOTHING`,
+        [
+          manifest.manifestHash,
+          image,
+          manifest.signature,
+          manifest.publicKey,
+          manifest.signingTime,
+          manifest.c2paVerified,
+          manifest.licenseTier,
+          manifest.commercialValueScore,
+          manifest.royaltyRights,
+          manifest.deviceLineage,
+          manifest.geminiAnalysis
+        ]
+      );
+      console.log('[Database] Manifest successfully stored in Neon PostgreSQL.');
+    } catch (dbErr) {
+      console.error('[Database] Failed to store manifest in database:', dbErr.message);
+    }
 
     // Return the signed manifest and the watermarked base64 image
     res.json({
