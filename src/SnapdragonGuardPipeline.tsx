@@ -167,6 +167,32 @@ export const SnapdragonGuardDashboard: React.FC = () => {
     fetchSigningHistory();
   }, []);
 
+  // Purge the Neon Postgres audit ledger
+  const handleClearLedger = async () => {
+    if (!window.confirm('Are you sure you want to purge the Neon Postgres persistent audit ledger?')) return;
+    try {
+      const response = await fetch('/api/manifests/clear', { method: 'POST' });
+      if (response.ok) {
+        setSigningHistory([]);
+        setManifest(null);
+      }
+    } catch (error) {
+      console.error('[API] Failed to clear audit ledger.', error);
+    }
+  };
+
+  // Download the generated C2PA Manifest JSON
+  const downloadManifestJson = () => {
+    if (!manifest) return;
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(manifest, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `c2pa-manifest-${manifest.manifestHash.replace('sha256:', '').substring(0, 12)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
   // Ref hooks
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -1228,6 +1254,33 @@ export const SnapdragonGuardDashboard: React.FC = () => {
                           </p>
                         </div>
                       )}
+
+                      <button 
+                        onClick={downloadManifestJson}
+                        style={{
+                          background: 'none',
+                          border: '1px solid rgba(0, 240, 255, 0.3)',
+                          color: '#00F0FF',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '10px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginTop: '14px',
+                          width: '100%',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s',
+                          fontFamily: 'inherit'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 240, 255, 0.1)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <FileText size={12} />
+                        Download C2PA Manifest (JSON)
+                      </button>
                     </div>
                   ) : (
                     <div style={dashboardStyles.manifestPlaceholder}>
@@ -1242,9 +1295,37 @@ export const SnapdragonGuardDashboard: React.FC = () => {
                   ...dashboardStyles.secureEnclaveBox,
                   marginTop: '16px'
                 }}>
-                  <div style={dashboardStyles.enclaveHeader}>
-                    <Database size={16} color="#00F0FF" />
-                    <span style={dashboardStyles.enclaveTitle}>Persistent Audit Ledger (Neon Postgres)</span>
+                  <div style={{
+                    ...dashboardStyles.enclaveHeader,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    width: '100%'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Database size={16} color="#00F0FF" />
+                      <span style={dashboardStyles.enclaveTitle}>Persistent Audit Ledger (Neon Postgres)</span>
+                    </div>
+                    {signingHistory.length > 0 && (
+                      <button 
+                        onClick={handleClearLedger}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#FF3366',
+                          fontSize: '9px',
+                          cursor: 'pointer',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          transition: 'all 0.2s',
+                          backgroundColor: 'rgba(255, 51, 102, 0.1)'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 51, 102, 0.2)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 51, 102, 0.1)'}
+                      >
+                        Clear Ledger
+                      </button>
+                    )}
                   </div>
                   
                   {isLoadingHistory ? (

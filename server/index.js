@@ -99,6 +99,18 @@ app.get('/api/manifests', async (req, res) => {
   }
 });
 
+// Clear audit ledger database endpoint
+app.post('/api/manifests/clear', async (req, res) => {
+  try {
+    await pool.query('TRUNCATE TABLE signed_manifests');
+    console.log('[Database] Audit ledger truncated by user.');
+    res.json({ success: true, message: 'Audit ledger successfully cleared' });
+  } catch (error) {
+    console.error('Failed to clear database ledger:', error);
+    res.status(500).json({ error: 'Database clear error', details: error.message });
+  }
+});
+
 // C2PA asset signing endpoint
 app.post('/api/sign', async (req, res) => {
   try {
