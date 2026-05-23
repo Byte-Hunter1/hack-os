@@ -49,7 +49,30 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Pre-rendered Semantic HTML for Search Engines & Non-JS Crawlers -->
+      <header>
+        <h1>Snapdragon Guard: On-Device Media Provenance & Deepfake Interceptor</h1>
+        <p>A privacy-first, zero-leak camera stream provenance keystore and real-time deepfake detector optimized for the Qualcomm Hexagon NPU.</p>
+      </header>
+      
+      <main>
+        <section>
+          <h2>Real-Time Hardware ISP Interception & C2PA Signing</h2>
+          <p>This edge-native application intercepts camera streams at the hardware level, embedding secure C2PA cryptographic signatures using the Snapdragon Secure Processing Unit (SPU) TrustZone.</p>
+        </section>
+
+        <section>
+          <h2>Model Quantization Profiler & NPU Diagnostics</h2>
+          <p>Deploy optimized deepfake detection models (INT4, INT8, and FP16 fallback) leveraging the Hexagon Vector Extensions (HVX) with sub-33ms frame budget latency.</p>
+        </section>
+
+        <section>
+          <h2>Edge Infrastructure ROI Calculator</h2>
+          <p>Compute cost savings and infrastructure profitability by offloading machine learning inference and bandwidth overhead to edge devices, eliminating cloud GPU bills and reducing carbon footprints.</p>
+        </section>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
