@@ -35,6 +35,12 @@ export interface SecurityManifest {
   licenseTier: string;
   commercialValueScore: number;
   royaltyRights: string;
+  geminiAnalysis?: {
+    status: string;
+    confidence: number;
+    reason: string;
+    inspector: string;
+  };
 }
 
 export interface QuantizationProfile {
@@ -1146,6 +1152,38 @@ export const SnapdragonGuardDashboard: React.FC = () => {
                         <div style={dashboardStyles.manifestLineJson}>
                           <strong>Snapdragon SPU Public Key (PEM):</strong>
                           <pre style={{ ...dashboardStyles.jsonPre, fontSize: '8px', lineHeight: '1.25', color: '#8892B0', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{manifest.publicKey}</pre>
+                        </div>
+                      )}
+
+                      {manifest.geminiAnalysis && (
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '10px',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(0, 240, 255, 0.15)',
+                          backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                            <span style={{
+                              width: '6px',
+                              height: '6px',
+                              borderRadius: '50%',
+                              backgroundColor: manifest.geminiAnalysis.status === 'GENUINE' ? '#10B981' : '#FF3366',
+                              boxShadow: manifest.geminiAnalysis.status === 'GENUINE' ? '0 0 6px #10B981' : '0 0 6px #FF3366'
+                            }} />
+                            <strong style={{ fontSize: '11px', color: '#F8FAFC', letterSpacing: '0.05em' }}>
+                              GEMINI MULTIMODAL AI INSPECTION
+                            </strong>
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#94A3B8', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Inspector: {manifest.geminiAnalysis.inspector}</span>
+                            <span style={{ color: manifest.geminiAnalysis.status === 'GENUINE' ? '#10B981' : '#FF3366', fontWeight: 'bold' }}>
+                              {manifest.geminiAnalysis.status} ({Math.round(manifest.geminiAnalysis.confidence * 100)}%)
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '10px', color: '#E2E8F0', margin: 0, fontStyle: 'italic', lineHeight: '1.4' }}>
+                            "{manifest.geminiAnalysis.reason}"
+                          </p>
                         </div>
                       )}
                     </div>
